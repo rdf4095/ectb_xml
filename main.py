@@ -20,6 +20,9 @@ author: Russell Folks
 history:
 -------
 11-18-2024  creation
+11-22-2024  Test algorithm to segment terms by case, using sev scores.
+12-05-2024  Move alternate xml-reading methods to alternate_xml.txt.
+12-07-2024  Add more tag lists: segments, summed scores, gated results,
 """
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -36,10 +39,63 @@ def get_tag_values(xmlroot):
     return record    
 
 
+def find_vessel(tag):
+    found_lad = False
+    found_lcx = False
+    found_rca = False
+
+    if tag.rfind("LAD") != -1: found_lad = True
+    if tag.rfind("LCX") != -1: found_lad = True
+    if tag.rfind("RCA") != -1: found_lad = True
+
+    return (found_lad, found_lcx, found_rca)
+
+
+def find_lv(tag):
+    found_lv = False
+    if tag.rfind("LV") != -1: found_lv = True
+
+    return found_lv
+
+
+def find_edes(tag):
+    found_edes = False
+    if tag.rfind("ED") != -1 or tag.rfind("ES") != -1: found_edes = True
+
+    return found_edes
+
+
+def match_part_to_def(parts, defs, prepend):
+    print(f'    parts: {parts}')
+    output = ''
+    if len(defs) < len(parts):
+        output += parts[0]
+    for n, item in enumerate(parts):
+        if item in defs.keys():
+            output += ' '
+            output += defs[item]
+
+    return output
+
+
+
+
+# module variables
+# ================
+# definitions
+severity_defs = {'Tot': 'Total',
+                 'Sev': 'defect severity',
+                 'Score': 'in standard deviation units'}
+defect_defs = {'Extent': 'defect extent,',
+               'Total': 'in pixels',
+               'Reversed': 'defect reversed,'}
+defect_defs.keys()
+summed_defs = {}
+segmental_defs = {}
+gated_defs = {}
+
 # Read the XML file
 # =================
-# method 1:
-# --------
 mypath = Path('data')
 
 filepath = mypath / 'CroDa_no_arrays.xml'
@@ -55,77 +111,50 @@ xmlroot = tree.getroot()
 
 ectb_tags = [elem.tag for elem in xmlroot.iter()]
 
-# get tag subsets
+# define tag subsets
 sev_scores = [tag for tag in ectb_tags if tag.endswith('SevScore')]
-extent_scores = [tag for tag in ectb_tags if tag.endswith('ExtentTotal')]
+# extent_scores = [tag for tag in ectb_tags if tag.endswith('ExtentTotal')]
+defect_values = [tag for tag in ectb_tags if
+                 tag.find('Extent') != -1 or
+                 tag.find('Reversed') != -1]
+segment_scores = []
+summed_scores = []
 
-# print(f'extent tags: {extent_scores}')
-# print(f'sev tags: {sev_scores}')
+# from gated, find items: LV, ES, ED
+# ?? need to find PFR...
+study1_gated_tags = [tag for tag in ectb_tags if tag.startswith('Study1')]
+study2_gated_tags = [tag for tag in ectb_tags if tag.startswith('Study2')]
 
+
+# print(f'defect tags: {defect_values}')
+print(f'sev tags: {sev_scores}')
 
 # parse tag name based on 'sections' as determined by letter case
 s1 = 'TotScore'
 s1.isalpha()
-# s1[3].isupper()
 
-parts = []
-for n, c in enumerate(sev_scores[0]):
-    p = ''
-    if c.isupper():
-        if len(p) == 0:
-            parts.append(p)
-            print(f'parts: {parts}')
+for tagnum, tag in enumerate(sev_scores):
+    markers = []
+    parts = []
+
+    # check for vessel name, prepend
+    vessel = find_vessel(tag)
+    if vessel:
+        vessel_part = tag[0:3]
+
+
+    for n, c in enumerate(tag):
+        if c.isupper():
+            markers.append(n)
+    for n, elem in enumerate(markers):
+        if n < len(markers) - 1:
+            next_part = tag[markers[n]:markers[n + 1]]
         else:
-            p.append(c)
-    else:
-        p.append(c)
-    
-    
+            next_part = tag[markers[n]:]
+        parts.append(next_part)
+    # print(parts)
+    # print()
 
-
-# method 2:
-# --------
-# import fnmatch
-# mypath2 = Path('data')
-# for file in mypath2.iterdir():
-#     if fnmatch.fnmatch(file, '*.xml'):
-#         print(f'found: {file}')
-#     tree = ET.parse(file)
-#     xmlroot = tree.getroot()
-#     # print(f'...root: {xmlroot}')
-#     rec = get_results(xmlroot)
-#     print(f'...for root: {xmlroot}, values found:\n{rec}')
-#     print()
-
-
-# method 3:
-# --------
-# import os
-# import fnmatch
-# mypath = Path('data')
-# mypath3 = os.listdir('data')
-# for file in mypath3:
-#     if fnmatch.fnmatch(file, '*.xml'):
-#         print(f'found: {file}')
-#         with open(os.path.join(mypath, file), 'r') as f:
-#             tree = ET.parse(f)
-#             xmlroot = tree.getroot()
-#             # print(f'...root: {xmlroot}')
-#             rec = get_results(xmlroot)
-#             print(f'...for root: {xmlroot}, values found:\n{rec}')
-#             print()
-
-
-# extract XML elements for the output file
-# (you would do this for .csv output)
-# 1. the column headers
-# klist = [str(k) for k in rec.keys()]
-# separator = ','
-# line3_h = separator.join(klist)
-# print(f'output row: {line3_h}')
-
-# 2. example: row values for row 3
-# vlist = [str(k) for k in rec.values()]
-# line3_v = separator.join(vlist)
-# print(f'output row: {line3_v}')
+    strin = match_part_to_def(parts, severity_defs, 'Stress')
+    print(f'output: {strin}')
 

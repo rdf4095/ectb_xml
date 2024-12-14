@@ -25,7 +25,8 @@ history:
 12-08-2024  Change some inline comments, simplify get_tag_values(), add tag
             definitions for segmental scores.
 12-11-2024  Combine extract_parts() and match_parts_to_defs() into
-            handle_tags()
+            handle_tags().
+12-13-2024  Add tag set for gated and ungated mass values.
 """
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -42,18 +43,6 @@ def get_tag_values(xmlroot):
 
 
 def find_vessel(tag):
-    # method 1
-    # found_lad = False
-    # found_lcx = False
-    # found_rca = False
-    #
-    # if tag.rfind("LAD") != -1: found_lad = True
-    # if tag.rfind("LCX") != -1: found_lad = True
-    # if tag.rfind("RCA") != -1: found_lad = True
-
-    # return (found_lad, found_lcx, found_rca)
-
-    # method 2
     vessels = ['LAD', 'LCX', 'RCA']
     for v in vessels:
         if tag.rfind(v) != -1:
@@ -74,17 +63,17 @@ def find_edes(tag):
     return found_edes
 
 
-def handle_tags(tag_group, tag_defs, prepend=None):
+def handle_tags(tag_group, tag_defs, prepend=None, gmass=False, ignore=None):
     output_set = []
     for tagnum, tag in enumerate(tag_group):
-        tag_parts = extract_parts(tag)
-        output = match_parts_to_defs(tag_parts, tag_defs, prepend)
+        tag_parts = extract_parts(tag, gmass)
+        output = match_parts_to_defs(tag_parts, tag_defs, prepend, ignore)
         output_set.append(output)
 
     return output_set
 
 
-def extract_parts(tag):
+def extract_parts(tag, gmass=False):
     # for tagnum, tag in enumerate(tag_group):
     markers = []
     parts = []
@@ -93,6 +82,11 @@ def extract_parts(tag):
     vessel = find_vessel(tag)
     if vessel:
         vessel_part = tag[0:3]
+    else:
+        vessel_part = ''
+
+    if gmass:
+        markers.append(0)
 
     for n, c in enumerate(tag):
         if c.isupper():
@@ -102,12 +96,16 @@ def extract_parts(tag):
             next_part = tag[markers[n]:markers[n + 1]]
         else:
             next_part = tag[markers[n]:]
-        parts.append(next_part)
+        if vessel_part:
+            parts.append(vessel_part)
+            vessel_part = ''
+        else:
+            parts.append(next_part)
 
     return parts
 
 
-def match_parts_to_defs(parts, defs, prepend=None):
+def match_parts_to_defs(parts, defs, prepend=None, ignore=None):
     output = ''
     if len(parts) > len(defs):
         output += parts[0]
@@ -119,6 +117,10 @@ def match_parts_to_defs(parts, defs, prepend=None):
         if item in defs.keys():
             output += ' '
             output += defs[item]
+        else:
+            if item != ignore:
+                output += ' '
+                output += item
 
     return output
 
@@ -140,6 +142,14 @@ segmental_defs = {'Bas': 'Basal',
                   'Lat': 'lateral',
                   'Sep': 'septal'
                   }
+mass_defs = {'Ung': 'Ungated Mass,',
+             'g': 'Gated Mass,',
+             'Myo': 'Myocardium',
+             'Def': 'Defect',
+             'Defect': 'Defect',
+             'Pct': 'Percent of',
+             'Rev': 'Reversible',
+             'Total': 'Total'}
 # gated_defs = {}
 
 # Read the XML file
@@ -162,55 +172,36 @@ defect_values = [tag for tag in ectb_tags if
 segment_scores = [tag for tag in ectb_tags if
                   tag.endswith('ScoreStr') or
                   tag.endswith('ScoreRst')]
+mass_values = [tag for tag in ectb_tags if
+               tag.startswith('Ung') or
+               tag.startswith('g')]
+
+# print(f'mass:\n{mass_values}')
+
 
 # from gated, find items: LV, ES, ED
 # ?? need to find PFR...
 study1_gated_tags = [tag for tag in ectb_tags if tag.startswith('Study1')]
 study2_gated_tags = [tag for tag in ectb_tags if tag.startswith('Study2')]
 
+# parse tag name based on 'sections' as determined by character case
+# s1 = 'TotScore'
+# s1.isalpha()
 
-# print(f'defect tags: {defect_values}')
-# print(f'sev tags: {sev_scores}')
+# severity_output = handle_tags(severity_scores, severity_defs, 'Stress')
 
-# parse tag name based on 'sections' as determined by letter case
-s1 = 'TotScore'
-s1.isalpha()
-
-# for tagnum, tag in enumerate(severity_scores):
-#     markers = []
-#     parts = []
+# print('severity:')
+# for item in severity_output:
+#     print(f'    {item}')
 #
-#     # check for vessel name, prepend
-#     vessel = find_vessel(tag)
-#     if vessel:
-#         vessel_part = tag[0:3]
+# defect_output = handle_tags(defect_values, defect_defs, 'Total')
 #
-#     for n, c in enumerate(tag):
-#         if c.isupper():
-#             markers.append(n)
-#     for n, elem in enumerate(markers):
-#         if n < len(markers) - 1:
-#             next_part = tag[markers[n]:markers[n + 1]]
-#         else:
-#             next_part = tag[markers[n]:]
-#         parts.append(next_part)
-#
-#     severity_output = match_parts_to_defs(parts, severity_defs, 'Stress')
-#     print(f'parts: {parts}')
-#     print(f'output: {severity_output}')
+# print('defect:')
+# for item in defect_output:
+#     print(f'    {item}')
 
-# severity_parts = extract_parts(severity_scores)
-severity_output = handle_tags(severity_scores, severity_defs, "Stress")
+mass_output = handle_tags(mass_values, mass_defs, gmass=True, ignore='Mass')
 
-print('severity:')
-for item in severity_output:
+print('mass:')
+for item in mass_output:
     print(f'    {item}')
-
-defect_output = handle_tags(defect_values, defect_defs)
-
-print('defect:')
-for item in defect_output:
-    print(f'    {item}')
-
-# print(f'    {defect_output}')
-

@@ -27,6 +27,8 @@ history:
 12-11-2024  Combine extract_parts() and match_parts_to_defs() into
             handle_tags().
 12-13-2024  Add tag set for gated and ungated mass values.
+12-24-2024  Add tags for 17 segments. Make 'ignore' parameter a list. Remove
+            'gmass' parameter.
 
 """
 from pathlib import Path
@@ -64,17 +66,20 @@ def find_edes(tag):
     return found_edes
 
 
-def handle_tags(tag_group, tag_defs, prepend=None, gmass=False, ignore=None):
+# def handle_tags(tag_group, tag_defs, prepend=None, gmass=False, ignore=None):
+def handle_tags(tag_group, tag_defs, prepend=None, ignore=None):
     output_set = []
     for tagnum, tag in enumerate(tag_group):
-        tag_parts = extract_parts(tag, gmass)
+        # tag_parts = extract_parts(tag, gmass)
+        tag_parts = extract_parts(tag)
         output = match_parts_to_defs(tag_parts, tag_defs, prepend, ignore)
         output_set.append(output)
 
     return output_set
 
 
-def extract_parts(tag, gmass=False):
+# def extract_parts(tag, gmass=False):
+def extract_parts(tag):
     # for tagnum, tag in enumerate(tag_group):
     markers = []
     parts = []
@@ -86,8 +91,8 @@ def extract_parts(tag, gmass=False):
     else:
         vessel_part = ''
 
-    if gmass:
-        markers.append(0)
+    # if gmass:
+    #     markers.append(0)
 
     for n, c in enumerate(tag):
         if c.isupper():
@@ -119,10 +124,12 @@ def match_parts_to_defs(parts, defs, prepend=None, ignore=None):
             output += ' '
             output += defs[item]
         else:
-            if item != ignore:
-                output += ' '
-                output += item
-
+            if isinstance(ignore, list):
+                if item in ignore:
+                    pass
+                else:
+                    output += ' '
+                    output += item
     return output
 
 
@@ -130,19 +137,12 @@ def match_parts_to_defs(parts, defs, prepend=None, ignore=None):
 # ===========================
 severity_defs = {'Tot': 'Total',
                  'Sev': 'defect severity',
-                 'Score': 'in standard deviation units'}
+                 'Score': 'in standard deviation units'
+                 }
 defect_defs = {'Extent': 'defect extent,',
                'Total': 'in pixels',
-               'Reversed': 'defect reversed,'}
-# defect_defs.keys()
-segmental_defs = {'Bas': 'Basal',
-                  'Mid': 'Mid',
-                  'Ap': 'Apical',
-                  'Ant': 'anterior',
-                  'Inf': 'inferior',
-                  'Lat': 'lateral',
-                  'Sep': 'septal'
-                  }
+               'Reversed': 'defect reversed,'
+               }
 mass_defs = {'Ung': 'Ungated Mass,',
              'g': 'Gated Mass,',
              'Myo': 'Myocardium',
@@ -150,8 +150,17 @@ mass_defs = {'Ung': 'Ungated Mass,',
              'Defect': 'Defect',
              'Pct': 'Percent of',
              'Rev': 'Reversible',
-             'Total': 'Total'}
-# gated_defs = {}
+             'Total': 'Total'
+             }
+segment_defs = {'Bas': 'basal',
+                'Mid': 'mid',
+                'Ap': 'apical',
+                'Ant': 'anterior',
+                'Inf': 'inferior',
+                'Lat': 'lateral',
+                'Sep': 'septal',
+                'Score': 'score'
+                }
 
 # Read the XML file
 # =================
@@ -164,8 +173,8 @@ xmlroot = tree.getroot()
 
 ectb_tags = [elem.tag for elem in xmlroot.iter()]
 
-# tag groups
-# ==========
+# define tag groups
+# -----------------
 severity_scores = [tag for tag in ectb_tags if tag.endswith('SevScore')]
 defect_values = [tag for tag in ectb_tags if
                  tag.find('Extent') != -1 or
@@ -176,9 +185,11 @@ segment_scores = [tag for tag in ectb_tags if
 mass_values = [tag for tag in ectb_tags if
                tag.startswith('Ung') or
                tag.startswith('g')]
-
-# print(f'mass:\n{mass_values}')
-
+str_segment_values = [tag for tag in ectb_tags if
+               tag.endswith('Str')]
+rst_segment_values = [tag for tag in ectb_tags if
+               tag.endswith('Rst')]
+summed_scores = []
 
 # from gated, find items: LV, ES, ED
 # ?? need to find PFR...
@@ -186,23 +197,41 @@ study1_gated_tags = [tag for tag in ectb_tags if tag.startswith('Study1')]
 study2_gated_tags = [tag for tag in ectb_tags if tag.startswith('Study2')]
 
 # parse tag name based on 'sections' as determined by character case
-# s1 = 'TotScore'
-# s1.isalpha()
+s1 = 'TotScore'
+s1.isalpha()
 
-# severity_output = handle_tags(severity_scores, severity_defs, 'Stress')
+severity_output = handle_tags(severity_scores, severity_defs, 'Stress')
 
-# print('severity:')
-# for item in severity_output:
-#     print(f'    {item}')
-#
-# defect_output = handle_tags(defect_values, defect_defs, 'Total')
-#
+defect_output = handle_tags(defect_values, defect_defs, 'Total')
+
+# mass_output = handle_tags(mass_values, mass_defs, gmass=True, ignore=['Mass'])
+mass_output = handle_tags(mass_values, mass_defs, ignore=['Mass'])
+
+str_segment_output = handle_tags(str_segment_values,
+                                 segment_defs,
+                                 prepend='Stress',
+                                 ignore=['Str'])
+
+rst_segment_output = handle_tags(rst_segment_values,
+                                 segment_defs,
+                                 prepend='Rest',
+                                 ignore=['Rst'])
+
 # print('defect:')
 # for item in defect_output:
 #     print(f'    {item}')
 
-mass_output = handle_tags(mass_values, mass_defs, gmass=True, ignore='Mass')
+# print('severity:')
+# for item in severity_output:
+#     print(f'    {item}')
 
 print('mass:')
 for item in mass_output:
     print(f'    {item}')
+
+# print('segment scores:')
+# for item in str_segment_output:
+#     print(f'    {item}')
+# print()
+# for item in rst_segment_output:
+#     print(f'    {item}')
